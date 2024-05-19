@@ -1,2 +1,2 @@
 require("vim-options")
-require("lua.lazy")
+require("lazy-options")

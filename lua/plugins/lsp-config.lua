@@ -1,91 +1,155 @@
 return {
-  "neovim/nvim-lspconfig",
-  event = { "BufReadPre", "BufNewFile" },
-  dependencies = {
-    "hrsh7th/cmp-nvim-lsp",
-    { "antosha417/nvim-lsp-file-operations", config = true },
-    { "folke/neodev.nvim", opts = {} },
-  },
-  config = function()
-    -- import lspconfig plugin
-    local lspconfig = require("lspconfig")
 
-    -- import mason_lspconfig plugin
-    local mason_lspconfig = require("mason-lspconfig")
+	{
+		-- Must be before lspconfig
+		"folke/neodev.nvim", -- completion of vim module and standard lua functions
+		config = function()
+			require("neodev").setup({})
+		end,
+	},
 
-    -- import cmp-nvim-lsp plugin
-    local cmp_nvim_lsp = require("cmp_nvim_lsp")
+	{
+		"ray-x/lsp_signature.nvim",
+		config = function()
+			require("lsp_signature").setup()
+		end,
+	},
 
-    local keymap = vim.keymap -- for conciseness
+	{
+		"williamboman/mason.nvim",
+		config = true,
+	},
 
-    vim.api.nvim_create_autocmd("LspAttach", {
-      group = vim.api.nvim_create_augroup("UserLspConfig", {}),
-      callback = function(ev)
-        -- Buffer local mappings.
-        -- See `:help vim.lsp.*` for documentation on any of the below functions
-        local opts = { buffer = ev.buf, silent = true }
+	{
+		"neovim/nvim-lspconfig",
+		config = function()
+			-- Setup lspconfig.
+			local cmpcapablts =
+				require("cmp_nvim_lsp").default_capabilities(vim.lsp.protocol.make_client_capabilities())
 
-        -- set keybinds
-        opts.desc = "Show LSP references"
-        keymap.set("n", "gR", "<cmd>Telescope lsp_references<CR>", opts) -- show definition, references
+			local lspcfg = require("lspconfig")
 
-        opts.desc = "Go to declaration"
-        keymap.set("n", "gD", vim.lsp.buf.declaration, opts) -- go to declaration
+			-- Use an on_attach function to only map the following keys
+			-- after the language server attaches to the current buffer
+			local on_attach = function(_, bufnr)
+				local function buf_set_keymap(...)
+					vim.api.nvim_buf_set_keymap(bufnr, ...)
+				end
+				-- local function buf_set_option(...) vim.api.nvim_buf_set_option(bufnr, ...) end
 
-        opts.desc = "Show LSP definitions"
-        keymap.set("n", "gd", "<cmd>Telescope lsp_definitions<CR>", opts) -- show lsp definitions
+				-- Enable language server completion triggered by <c-x><c-o> if not enabling autocompletion
+				vim.bo.omnifunc = "v:lua.vim.lsp.omnifunc"
 
-        opts.desc = "Show LSP implementations"
-        keymap.set("n", "gi", "<cmd>Telescope lsp_implementations<CR>", opts) -- show lsp implementations
+				-- Mappings.
+				local opts = { noremap = true, silent = true }
 
-        opts.desc = "Show LSP type definitions"
-        keymap.set("n", "gt", "<cmd>Telescope lsp_type_definitions<CR>", opts) -- show lsp type definitions
+				-- See `:help vim.lsp.*` for documentation on any of the below functions
+				buf_set_keymap("n", "gD", "<cmd>lua vim.lsp.buf.declaration()<CR>", opts)
+				buf_set_keymap("n", "gd", "<cmd>lua vim.lsp.buf.definition()<CR>", opts)
+				buf_set_keymap("n", "K", "<cmd>lua vim.lsp.buf.hover()<CR>", opts)
+				buf_set_keymap("n", "gi", "<cmd>lua vim.lsp.buf.implementation()<CR>", opts)
+				buf_set_keymap("n", "<Leader>wa", "<cmd>lua vim.lsp.buf.add_workspace_folder()<CR>", opts)
+				buf_set_keymap("n", "<Leader>wr", "<cmd>lua vim.lsp.buf.remove_workspace_folder()<CR>", opts)
+				buf_set_keymap(
+					"n",
+					"<Leader>wl",
+					"<cmd>lua print(vim.inspect(vim.lsp.buf.list_workspace_folders()))<CR>",
+					opts
+				)
+				buf_set_keymap("n", "<Leader>D", "<cmd>lua vim.lsp.buf.type_definition()<CR>", opts)
+				buf_set_keymap("n", "<Leader>rn", "<cmd>lua vim.lsp.buf.rename()<CR>", opts)
+				buf_set_keymap("n", "<Leader>ca", "<cmd>lua vim.lsp.buf.code_action()<CR>", opts)
+				buf_set_keymap("n", "gr", "<cmd>lua vim.lsp.buf.references()<CR>", opts)
+				buf_set_keymap("n", "<Leader>e", "<cmd>lua vim.diagnostic.open_float()<CR>", opts)
+				buf_set_keymap("n", "[d", "<cmd>lua vim.diagnostic.goto_prev()<CR>", opts)
+				buf_set_keymap("n", "]d", "<cmd>lua vim.diagnostic.goto_next()<CR>", opts)
+				buf_set_keymap("n", "<Leader>q", "<cmd>lua vim.diagnostic.setloclist()<CR>", opts)
+				buf_set_keymap("n", "<Leader>f", "<cmd>lua vim.lsp.buf.formatting()<CR>", opts)
+			end
 
-        opts.desc = "See available code actions"
-        keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
+			vim.diagnostic.config({
+				severity_sort = true,
+			})
 
-        opts.desc = "Smart rename"
-        keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts) -- smart rename
+			-- map buffer local keybindings when the language server attaches
+			lspcfg["pyright"].setup({
+				on_attach = on_attach,
+				flags = { debounce_text_changes = 150 },
+				capabilities = cmpcapablts,
+			})
+			lspcfg["clangd"].setup({
+				on_attach = on_attach,
+				flags = { debounce_text_changes = 150 },
+				capabilities = cmpcapablts,
+			})
+			lspcfg["vimls"].setup({
+				on_attach = on_attach,
+				flags = { debounce_text_changes = 150 },
+				capabilities = cmpcapablts,
+			})
 
-        opts.desc = "Show buffer diagnostics"
-        keymap.set("n", "<leader>D", "<cmd>Telescope diagnostics bufnr=0<CR>", opts) -- show  diagnostics for file
+			lspcfg["r_language_server"].setup({
+				on_attach = on_attach,
+				flags = { debounce_text_changes = 150 },
+				capabilities = cmpcapablts,
+			})
 
-        opts.desc = "Show line diagnostics"
-        keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts) -- show diagnostics for line
+			-- Segundo comentário na internet, ltex com n-grams é tão bom
+			-- quanto grammarly para correção gramatical.
+			-- Não instalar porque tem memory leak
+			-- lspcfg['ltex'].setup { }
 
-        opts.desc = "Go to previous diagnostic"
-        keymap.set("n", "[d", vim.diagnostic.goto_prev, opts) -- jump to previous diagnostic in buffer
+			-- local runtime_path = vim.split(package.path, ';')
+			-- table.insert(runtime_path, "lua/?.lua")
+			-- table.insert(runtime_path, "lua/?/init.lua")
 
-        opts.desc = "Go to next diagnostic"
-        keymap.set("n", "]d", vim.diagnostic.goto_next, opts) -- jump to next diagnostic in buffer
+			lspcfg["lua_ls"].setup({
+				on_attach = on_attach,
+				flags = { debounce_text_changes = 150 },
+				capabilities = cmpcapablts,
+				settings = {
+					Lua = {
+						workspace = {
+							-- Make the server aware of Neovim runtime files
+							library = {
+								-- for neovim plugins:
+								vim.env.VIMRUNTIME,
+								-- "~/.local/share/nvim/lazy/neodev.nvim/types/stable",
+								"~/.local/share/nvim/lazy/neodev.nvim/types/nightly",
+							},
+							-- Diable the message "Do you need to configure your environment as luassert"
+							-- See: https://github.com/sumneko/lua-language-server/discussions/1688
+							-- checkThirdParty = false,
 
-        opts.desc = "Show documentation for what is under cursor"
-        keymap.set("n", "K", vim.lsp.buf.hover, opts) -- show documentation for what is under cursor
+							-- Required by obslua.lua
+							-- preloadFileSize = 500000,
+						},
+						runtime = {
+							-- Tell the language server which version of Lua you're using (most likely LuaJIT in the case of Neovim)
+							version = "LuaJIT",
+							-- Setup your lua path
+							-- path = runtime_path,
+							path = {
+								"lua/?.lua",
+								"lua/?/init.lua",
+							},
+						},
+						completion = { callSnippet = "Replace" },
+						telemetry = {
+							enable = false,
+						},
+						diagnostics = { globals = { "vim" } },
+					},
+				},
+			})
 
-        opts.desc = "Restart LSP"
-        keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
-      end,
-    })
+			vim.fn.sign_define("DiagnosticSignError", { text = "✘", texthl = "LspDiagnosticsDefaultError" })
 
-    -- used to enable autocompletion (assign to every lsp server config)
-    local capabilities = cmp_nvim_lsp.default_capabilities()
+			vim.fn.sign_define("DiagnosticSignWarn", { text = "▲", texthl = "LspDiagnosticsDefaultWarning" })
 
-    -- Change the Diagnostic symbols in the sign column (gutter)
-    -- (not in youtube nvim video)
-    local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
-    for type, icon in pairs(signs) do
-      local hl = "DiagnosticSign" .. type
-      vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
-    end
+			vim.fn.sign_define("DiagnosticSignInfo", { text = "I", texthl = "LspDiagnosticsDefaultInformation" })
 
-    mason_lspconfig.setup_handlers({
-      -- default handler for installed servers
-      function(server_name)
-        lspconfig[server_name].setup({
-          capabilities = capabilities,
-        })
-      end,
-    })
-  end,
+			vim.fn.sign_define("DiagnosticSignHint", { text = "⚑", texthl = "LspDiagnosticsDefaultHint" })
+		end,
+	},
 }
-
